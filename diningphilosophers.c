@@ -1,39 +1,78 @@
 #include<stdio.h>
-#include<pthread.h>
+#include<stdlib.h>
 #include<unistd.h>
-
-pthread_mutex_t chopstick[5];
-pthread_t philosopher[5];
-
-void* runner(void* arg) {
-    int i = *(int*)arg;
-
-    printf("Philosopher %d is thinking\n", i);
-    sleep(2);
-
-    pthread_mutex_lock(&chopstick[i]);
-    pthread_mutex_lock(&chopstick[(i+1)%5]);
-
-    printf("Philosopher %d is eating\n", i);
-    sleep(3);
-
-    pthread_mutex_unlock(&chopstick[i]);
-    pthread_mutex_unlock(&chopstick[(i+1)%5]);
-
-    printf("Philosopher %d finished eating\n", i);
-    return NULL;
+#include<pthread.h>
+#include<semaphore.h>
+#define N 5
+#define THINKING 0
+#define HUNGRY 1
+#define EATING 2
+#define LEFT (phnum+N-1)%N
+#define RIGHT (phnum+1)%N
+int state[N];
+int phil[N]={0,1,2,3,4};
+sem_t mutex;
+sem_t s[N];
+void test(int phnum)
+{
+    if(state[phnum]==HUNGRY &&
+       state[LEFT]!=EATING &&
+       state[RIGHT]!=EATING)
+    {
+        state[phnum]=EATING;
+        sleep(2);
+        printf("phil %d takes fork %d and %d\n",
+               phnum+1,LEFT+1,phnum+1);
+        printf("phil %d is eating\n",phnum+1);
+        sem_post(&s[phnum]);
+    }
 }
-
-int main() {
-    int i, a[5];
-
-    for(i = 0; i < 5; i++) {
-        pthread_mutex_init(&chopstick[i], NULL);
-        a[i] = i;
-        pthread_create(&philosopher[i], NULL, runner, &a[i]);
+void takefork(int phnum)
+{
+    sem_wait(&mutex);
+    state[phnum]=HUNGRY;
+    printf("phil %d is hungry\n",phnum+1);
+    test(phnum);
+    sem_post(&mutex);
+    sem_wait(&s[phnum]);
+    sleep(1);
+}
+void putfork(int phnum)
+{
+    sem_wait(&mutex);
+    state[phnum]=THINKING;
+    printf("phil %d puts down fork %d and %d\n",
+           phnum+1,LEFT+1,phnum+1);
+    printf("phil %d is in thinking state\n",phnum+1);
+    test(LEFT);
+    test(RIGHT);
+    sem_post(&mutex);
+}
+void *philosopher(void *num)
+{
+    while(1)
+    {
+        int *i=num;
+        sleep(1);
+        takefork(*i);
+        sleep(1);
+        putfork(*i);
     }
-
-    for(i = 0; i < 5; i++) {
-        pthread_join(philosopher[i], NULL);
+}
+int main()
+{
+    int i;
+    pthread_t tid[N];
+    sem_init(&mutex,0,1);
+    for(i=0;i<N;i++)
+        sem_init(&s[i],0,0);
+    for(i=0;i<N;i++)
+    {
+        pthread_create(&tid[i],NULL,
+                       philosopher,&phil[i]);
+        printf("phil %d is thinking\n",
+               phil[i]+1);
     }
+    for(i=0;i<N;i++)
+        pthread_join(tid[i],NULL);
 }
